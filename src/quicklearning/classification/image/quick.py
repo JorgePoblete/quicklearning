@@ -1,5 +1,7 @@
 import os
 import DuckDuckGoImages as ddg
+from tqdm.auto import tqdm
+from joblib import Parallel, delayed
 
 import tensorflow as tf
 import tensorflow_hub as hub
@@ -12,74 +14,64 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from quicklearning.classification.image import list_files
 from quicklearning.classification.image.model import Model
 from quicklearning.classification.image import create_folder
+from quicklearning.classification.image import remove_folder
 from quicklearning.classification.image.callbacks import EarlyStop, LearningRateReducer
 
-mobilenet_v2 = (hub.KerasLayer("https://tfhub.dev/google/imagenet/mobilenet_v2_100_96/feature_vector/4", trainable=False), 96)
-efficientnet_b0 = (hub.KerasLayer("https://tfhub.dev/google/efficientnet/b0/feature-vector/1", trainable=False), 224)
-inception_v3 = (hub.KerasLayer("https://tfhub.dev/google/imagenet/inception_v3/feature_vector/4", trainable=False), 299)
-efficientnet_b7 = (hub.KerasLayer("https://tfhub.dev/google/efficientnet/b7/feature-vector/1", trainable=False), 600)
 
-def fit(epochs, input_model=efficientnet_b0, optimizer=optimizers.RMSprop(), classes=[], data_folder="./images", batch_size=32, validation_split=0.2, predict_retrain_loops=0, verbose=False):
-    (transfer_learning_layer, size) = input_model
-
+def fit(epochs=0, classes=[], data_folder="./images", batch_size=32, validation_split=0.2, predict_retrain_loops=0, verbose=True):
     _download_data(data_folder, classes)
     
-    model = Model(
-        _create_model(transfer_learning_layer, size, optimizer, classes),
-        size,
-        classes=classes,
-        data_folder=data_folder,
-        batch_size=batch_size,
-        validation_split=validation_split,
-        callbacks=[
-            EarlyStop(),
-            LearningRateReducer()
-        ],
-        verbose=verbose
-    )
-    model.fit(epochs)
-
+    def fit_new_model():
+        model = Model(
+            _create_model("https://tfhub.dev/google/efficientnet/b0/feature-vector/1", 224, optimizers.RMSprop(), classes),
+        )
+        model.fit(
+            epochs,
+            data_folder=data_folder,
+            batch_size=batch_size,
+            validation_split=validation_split,
+            callbacks=[
+                EarlyStop(),
+                LearningRateReducer()
+            ],
+            verbose=verbose
+        )
+        return model
+    model = fit_new_model()
     for _ in range(predict_retrain_loops):
-        bad_predictions = remove_bad_prediction_files(model, data_folder, classes)
+        bad_predictions = remove_bad_prediction_files(model, data_folder)
         if bad_predictions > 0:
-            model = Model(
-                _create_model(transfer_learning_layer, size, optimizer, classes),
-                size,
-                classes=classes,
-                data_folder=data_folder,
-                batch_size=batch_size,
-                validation_split=validation_split,
-                callbacks=[
-                    EarlyStop(),
-                    LearningRateReducer()
-                ],
-                verbose=verbose
-            )
-            model.fit(epochs)
+            model = fit_new_model()
         else:
             return model
     return model
 
-def remove_bad_prediction_files(model, data_folder, classes):
+def remove_bad_prediction_files(model, data_folder):
     removed_files = 0
-    for c in classes:
-        files = list_files('{}/{}'.format(data_folder, c))
-        for file in files:
-            prediction, _ = model.predict(file='{}/{}/{}'.format(data_folder, c, file))
-            if prediction is not c:
-                os.remove('{}/{}/{}'.format(data_folder, c, file))
-                removed_files += 1
+    with tqdm(model.classes, desc='refine', unit="class") as bar:
+        for c in bar:
+            files = list_files('{}/{}'.format(data_folder, c))
+            for file in tqdm(files, desc='refining class {}'.format(c), unit="img", leave=False):
+                prediction, _ = model.predict(file='{}/{}/{}'.format(data_folder, c, file))
+                if prediction is not c:
+                    os.remove('{}/{}/{}'.format(data_folder, c, file))
+                    removed_files += 1
+                    bar.set_postfix(removed_files=removed_files)
     return removed_files
 
 def _download_data(data_folder, classes):
+    remove_folder(data_folder)
     create_folder(data_folder)
-    for item in classes:
-        if not os.path.exists('{}/{}'.format(data_folder, item)):
-            ddg.download(item, folder='{}/{}'.format(data_folder, item), thumbnails=True, parallel=True)
+    for item in tqdm(classes, desc="downloading dataset", unit="class"):
+        folder = '{}/{}'.format(data_folder, item)
+        create_folder(folder)
+        urls = ddg.get_image_thumbnails_urls(item)
+        
+        Parallel(n_jobs=os.cpu_count())(delayed(ddg._download)(url, folder) for url in tqdm(urls, desc=item, unit="img", leave=False))
 
 def _create_model(transfer_learning_layer, size, optimizer, classes):
     model = Sequential([
-        transfer_learning_layer,
+        hub.KerasLayer(transfer_learning_layer, trainable=False, input_shape=[size, size, 3]),
         layers.Dense(len(classes), activation=tf.nn.softmax)
     ])
     if len(classes) <= 2:
