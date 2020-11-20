@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="quicklearning",
-    version="0.0.30",
+    version="0.0.39",
     license="MIT",
     author="koke",
     author_email="jpobleteriquelme@gmail.com",
@@ -20,14 +20,14 @@ setuptools.setup(
         "quicklearning.classification.image"
     ],
     install_requires = [
-        "requests >= 2.24.0",
-        "joblib >= 0.16.0",
-        "tqdm >= 4.49.0",
-        "matplotlib >= 3.3.2",
-        "Pillow >= 7.2.0",
-        "DuckDuckGoImages >= 2.0.0",
-        "tensorflow >= 2.3.0",
-        "tensorflow_hub >= 0.9.0"
+        "requests ~= 2.24.0",
+        "joblib ~= 0.16.0",
+        "tqdm ~= 4.49.0",
+        "matplotlib ~= 3.3.2",
+        "Pillow ~= 7.2.0",
+        "DuckDuckGoImages ~= 2.0.0",
+        "tensorflow ~= 2.3.1",
+        "tensorflow_hub ~= 0.10.0"
     ],
     extras_require = {
         "dev": [

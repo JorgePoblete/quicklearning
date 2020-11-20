@@ -69,7 +69,7 @@ class Lite(object):
         return self.classes[index], prediction[0][index]
 
     @disable_tensorflow_warnings
-    def predictions(self, file="", url="", image=None):
+    def predictions(self, file="", url="", image=None, sort=False):
         if file is not "":
             img = Image.open(file)
         elif url is not "":
@@ -91,4 +91,7 @@ class Lite(object):
         prediction = self.interpreter.get_tensor(self.output_details[0]['index'])
         predictions = list(zip(self.classes, prediction[0]))
         
-        return sorted(predictions, key=lambda tup: tup[1], reverse=True)
+        if sort:
+            return sorted(predictions, key=lambda tup: tup[1], reverse=True)
+        else:
+            return {k: v for (k,v) in predictions}

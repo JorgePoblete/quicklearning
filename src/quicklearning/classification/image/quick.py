@@ -1,5 +1,4 @@
 import os
-import DuckDuckGoImages as ddg
 from tqdm.auto import tqdm
 from joblib import Parallel, delayed
 
@@ -15,11 +14,13 @@ from quicklearning.classification.image import list_files
 from quicklearning.classification.image.model import Model
 from quicklearning.classification.image import create_folder
 from quicklearning.classification.image import remove_folder
+from quicklearning.classification.image import create_dataset
+from quicklearning.classification.image import remove_bad_prediction_files
 from quicklearning.classification.image.callbacks import EarlyStop, LearningRateReducer
 
 
 def fit(epochs=0, classes=[], data_folder="./images", batch_size=32, validation_split=0.2, predict_retrain_loops=0, verbose=True):
-    _download_data(data_folder, classes)
+    create_dataset(data_folder=data_folder, classes=classes)
     
     def fit_new_model():
         model = Model(
@@ -39,35 +40,12 @@ def fit(epochs=0, classes=[], data_folder="./images", batch_size=32, validation_
         return model
     model = fit_new_model()
     for _ in range(predict_retrain_loops):
-        bad_predictions = remove_bad_prediction_files(model, data_folder)
+        bad_predictions = remove_bad_prediction_files(model, data_folder, min_accuracy=0.3)
         if bad_predictions > 0:
             model = fit_new_model()
         else:
             return model
     return model
-
-def remove_bad_prediction_files(model, data_folder):
-    removed_files = 0
-    with tqdm(model.classes, desc='refine', unit="class") as bar:
-        for c in bar:
-            files = list_files('{}/{}'.format(data_folder, c))
-            for file in tqdm(files, desc='refining class {}'.format(c), unit="img", leave=False):
-                prediction, _ = model.predict(file='{}/{}/{}'.format(data_folder, c, file))
-                if prediction is not c:
-                    os.remove('{}/{}/{}'.format(data_folder, c, file))
-                    removed_files += 1
-                    bar.set_postfix(removed_files=removed_files)
-    return removed_files
-
-def _download_data(data_folder, classes):
-    remove_folder(data_folder)
-    create_folder(data_folder)
-    for item in tqdm(classes, desc="downloading dataset", unit="class"):
-        folder = '{}/{}'.format(data_folder, item)
-        create_folder(folder)
-        urls = ddg.get_image_thumbnails_urls(item)
-        
-        Parallel(n_jobs=os.cpu_count())(delayed(ddg._download)(url, folder) for url in tqdm(urls, desc=item, unit="img", leave=False))
 
 def _create_model(transfer_learning_layer, size, optimizer, classes):
     model = Sequential([

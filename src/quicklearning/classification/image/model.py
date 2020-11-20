@@ -115,7 +115,7 @@ class Model(object):
         index = np.argmax(prediction, axis=-1)[0]
         return self.classes[index], prediction[0][index]
 
-    def predictions(self, file="", url="", image=None):
+    def predictions(self, file="", url="", image=None, sort=False):
         if file is not "":
             img = Image.open(file)
         elif url is not "":
@@ -136,9 +136,12 @@ class Model(object):
 
         prediction = self.model.predict(x)
         predictions = list(zip(self.classes, prediction[0]))
-        return sorted(predictions, key=lambda tup: tup[1], reverse=True)
+        if sort:
+            return sorted(predictions, key=lambda tup: tup[1], reverse=True)
+        else:
+            return {k: v for (k,v) in predictions}
 
-    def accuracy_plot(self):
+    def plot_accuracy(self):
         return plot(
             'model accuracy',
             'epoch',
@@ -150,7 +153,7 @@ class Model(object):
             leyend=['train', 'val']
         )
 
-    def loss_plot(self):
+    def plot_loss(self):
         return plot(
             'model loss',
             'epoch',
